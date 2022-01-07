@@ -8,7 +8,6 @@ BreakBeforeBraces: Allman
 IndentWidth: '4'
 Language: Cpp
 NamespaceIndentation: All
-SpacesInAngles: 'true'
 SpacesInCStyleCastParentheses: 'true'
 SpacesInContainerLiterals: 'true'
 SpacesInParentheses: 'true'
@@ -16,4 +15,5 @@ SpacesInSquareBrackets: 'true'
 UseTab: Never
 PointerAlignment: Left
 IndentCaseLabels: true
+AlwaysBreakTemplateDeclarations: Yes
 ...

@@ -14,6 +14,7 @@
     <ProjectCapability Include="SourceItemsFromImports" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="$(MSBuildThisFileDirectory)Shared.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)Communication.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)Hash.hpp" />
   </ItemGroup>
 </Project>

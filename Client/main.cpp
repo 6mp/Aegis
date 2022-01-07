@@ -1,6 +1,6 @@
-#include "../Shared/Shared.hpp"
+#include "../Shared/Hash.hpp"
 
 auto main() -> int
 {
-
+    
 }
