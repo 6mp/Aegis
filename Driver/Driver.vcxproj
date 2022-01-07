@@ -164,9 +164,13 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Callbacks\NotifyRoutine.cpp" />
+    <ClCompile Include="Callbacks\PrePost.cpp" />
     <ClCompile Include="entry.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Callbacks\NotifyRoutine.hpp" />
+    <ClInclude Include="Callbacks\PrePost.hpp" />
     <ClInclude Include="Utils\Utils.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

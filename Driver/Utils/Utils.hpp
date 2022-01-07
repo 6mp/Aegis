@@ -101,69 +101,77 @@ namespace Utils
         ULONG AddressOfNameOrdinals;
     } IMAGE_EXPORT_DIRECTORY,* PIMAGE_EXPORT_DIRECTORY;
 
-    inline PVOID GetKernelBase()
+    FORCEINLINE PVOID GetKernelBase()
     {
-        typedef unsigned char uint8_t;
-        auto idt_base = reinterpret_cast<uintptr_t>( KeGetPcr()->IdtBase );
-        auto align_page = *reinterpret_cast<uintptr_t*>( idt_base + 4 ) >> 0xc << 0xc;
-
-        for ( ; align_page; align_page -= PAGE_SIZE )
+        static void* base;
+        if ( base == nullptr )
         {
-            for ( int index = 0; index < PAGE_SIZE - 0x7; index++ )
-            {
-                auto current_address = static_cast<intptr_t>( align_page ) + index;
+            const auto idt_base = reinterpret_cast<ULONG64>( KeGetPcr()->IdtBase );
 
-                if ( *reinterpret_cast<uint8_t*>( current_address ) == 0x48 &&
-                     *reinterpret_cast<uint8_t*>( current_address + 1 ) == 0x8D &&
-                     *reinterpret_cast<uint8_t*>( current_address + 2 ) == 0x1D &&
-                     *reinterpret_cast<uint8_t*>( current_address + 6 ) == 0xFF ) // 48 8d 1D ?? ?? ?? FF
+            for ( auto align_page = *reinterpret_cast<ULONG64*>( idt_base + 4 ) >> 0xc << 0xc; align_page;
+                  align_page -= PAGE_SIZE )
+            {
+                for ( int index = 0; index < PAGE_SIZE - 0x7; index++ )
                 {
-                    auto nto_base_offset = *reinterpret_cast<int*>( current_address + 3 );
-                    auto nto_base_ = ( current_address + nto_base_offset + 7 );
-                    if ( !( nto_base_ & 0xfff ) )
+                    const auto current_address = static_cast<intptr_t>( align_page ) + index;
+
+                    if ( *reinterpret_cast<UINT8*>( current_address ) == 0x48 &&
+                         *reinterpret_cast<UINT8*>( current_address + 1 ) == 0x8D &&
+                         *reinterpret_cast<UINT8*>( current_address + 2 ) == 0x1D &&
+                         *reinterpret_cast<UINT8*>( current_address + 6 ) == 0xFF ) // 48 8d 1D ?? ?? ?? FF
                     {
-                        return ( void* )nto_base_;
+                        const auto nto_base_offset = *reinterpret_cast<int*>( current_address + 3 );
+                        if (auto nto_base_ = ( current_address + nto_base_offset + 7 ); !( nto_base_ & 0xfff ) )
+                        {
+                            base = reinterpret_cast<void*>( nto_base_ );
+                            return base;
+                        }
                     }
                 }
             }
+
+            return nullptr;
         }
 
-        return NULL;
+        return base;
     };
 
-    FORCEINLINE PVOID GetDriverExportByHash( PVOID lpDriverBase, ULONG64 nStrHash )
+    FORCEINLINE PVOID GetDriverExportByHash( void* driver_base, ULONG64 hash )
     {
-        auto lpDosHeader = static_cast< PIMAGE_DOS_HEADER >( lpDriverBase );
-        auto lpNtHeader = reinterpret_cast< PIMAGE_NT_HEADERS64 >( lpDosHeader->e_lfanew + ( ULONG64 )lpDriverBase );
+        const auto dos_header = static_cast< PIMAGE_DOS_HEADER >( driver_base );
+        const auto nt_header = reinterpret_cast< PIMAGE_NT_HEADERS64 >( dos_header->e_lfanew + reinterpret_cast<ULONG64>( driver_base ) );
 
-        PIMAGE_EXPORT_DIRECTORY lpExportDir =
-            ( PIMAGE_EXPORT_DIRECTORY )( ( ULONG64 )lpDriverBase +
-                                         lpNtHeader->OptionalHeader.DataDirectory[ 0 ]
-                                             .VirtualAddress );
+        const auto export_dir =
+            reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>( ( ULONG64 )driver_base +
+                                                       nt_header->OptionalHeader.DataDirectory[ 0 ]
+                                                       .VirtualAddress );
 
-        ULONG32* lpNameArr = ( ULONG32* )( lpExportDir->AddressOfNames + ( ULONG64 )lpDriverBase );
+        const auto names = reinterpret_cast<ULONG32*>( export_dir->AddressOfNames + reinterpret_cast<ULONG64>( driver_base ) );
 
-        ULONG32* lpFuncs = ( ULONG32* )( lpExportDir->AddressOfFunctions + ( ULONG64 )lpDriverBase );
+        const auto functions = reinterpret_cast<ULONG32*>( export_dir->AddressOfFunctions + reinterpret_cast<ULONG64>( driver_base ) );
 
-        USHORT* lpOrdinals = ( USHORT* )( lpExportDir->AddressOfNameOrdinals + ( ULONG64 )lpDriverBase );
+        const auto ordinals = reinterpret_cast<USHORT*>( export_dir->AddressOfNameOrdinals + reinterpret_cast<ULONG64>( driver_base ) );
 
-        for ( auto nIdx = 0u; nIdx < lpExportDir->NumberOfFunctions; ++nIdx )
+        for ( auto idx{ 0u }; idx < export_dir->NumberOfFunctions; ++idx )
         {
-            if ( !lpNameArr[ nIdx ] || !lpOrdinals[ nIdx ] )
+            if ( !names[ idx ] || !ordinals[ idx ] )
                 continue;
 
-            if ( Hash::hash( ( PCHAR )( ( ULONG64 )lpDriverBase + lpNameArr[ nIdx ] ) ) == nStrHash )
-                return ( PVOID )( ( ULONG64 )lpDriverBase + lpFuncs[ lpOrdinals[ nIdx ] ] );
+            if ( Hash::hash( reinterpret_cast<PCHAR>( reinterpret_cast<ULONG64>( driver_base ) + names[ idx ] ) ) == hash )
+                return reinterpret_cast<PVOID>( reinterpret_cast<ULONG64>( driver_base ) + functions[ ordinals[ idx ] ] );
         }
-        return NULL;
+        return nullptr;
     }
 }
 
 
-#define DYN_NT_SYM(x)                                   \
-  ((decltype(&x))Utils::GetDriverExportByHash(          \
-      Utils::GetKernelBase(), COMPILE_HASH( #x ) ) )
 
+#define GET_SYM(x)                                   \
+  Utils::GetDriverExportByHash( Utils::GetKernelBase(), COMPILE_HASH( #x ) )
+
+#define GET_FN( x )                                                                                                    \
+    static_cast<decltype( &x )>( Utils::GetDriverExportByHash( Utils::GetKernelBase(), COMPILE_HASH( #x ) ) )
 
 #define DBG_LOG( fmt, ... ) \
-    DYN_NT_SYM( DbgPrintEx )( DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[oxygen][" __FUNCTION__ "] " fmt "\n", ##__VA_ARGS__ );
+    GET_FN( DbgPrintEx )                                                                                               \
+    ( DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[oxygen][" __FUNCTION__ "] " fmt "\n", ##__VA_ARGS__ );

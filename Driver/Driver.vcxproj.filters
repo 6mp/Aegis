@@ -2,6 +2,12 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="entry.cpp" />
+    <ClCompile Include="Callbacks\NotifyRoutine.cpp">
+      <Filter>Callbacks\NotifyRoutine</Filter>
+    </ClCompile>
+    <ClCompile Include="Callbacks\PrePost.cpp">
+      <Filter>Callbacks\PrePost</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Callbacks">
@@ -10,10 +16,22 @@
     <Filter Include="Utils">
       <UniqueIdentifier>{de3c0353-25d5-4a7b-b8e3-126a9970792e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Callbacks\PrePost">
+      <UniqueIdentifier>{9fa56664-a4a7-4d84-b97f-0b36165f5e2d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Callbacks\NotifyRoutine">
+      <UniqueIdentifier>{661785f2-9437-4ec6-abe6-67a5668aec75}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Utils\Utils.hpp">
       <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Callbacks\NotifyRoutine.hpp">
+      <Filter>Callbacks\NotifyRoutine</Filter>
+    </ClInclude>
+    <ClInclude Include="Callbacks\PrePost.hpp">
+      <Filter>Callbacks\PrePost</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -13,13 +13,11 @@ auto PrePost::PreCallback( PVOID RegistrationContext, POB_PRE_OPERATION_INFORMAT
 {
     UNREFERENCED_PARAMETER( RegistrationContext );
 
-    // https://guidedhacking.com/threads/anticheat-bypass-obregistercallbacks-blocking-handle-creation.16164/
-
     const auto name =
-        DYN_NT_SYM( PsGetProcessImageFileName )( static_cast< PEPROCESS >( OperationInformation->Object ) );
+        GET_FN( PsGetProcessImageFileName )( static_cast< PEPROCESS >( OperationInformation->Object ) );
 
 
-    if ( hashstr::hash( reinterpret_cast< const char* >( name ) ) == ProcessHash )
+    if ( Hash::hash( reinterpret_cast< const char* >( name ) ) == ProcessHash )
     {
         if ( OperationInformation->Operation == OB_OPERATION_HANDLE_CREATE ||
              OperationInformation->Operation == OB_OPERATION_HANDLE_DUPLICATE )
