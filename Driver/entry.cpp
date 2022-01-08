@@ -143,12 +143,12 @@ EXTERN_C auto DriverEntry( PDRIVER_OBJECT driver_object, PUNICODE_STRING registr
     // Needed to register callbacks
     static_cast<Utils::PKLDR_DATA_TABLE_ENTRY>( driver_object->DriverSection )->Flags |= 32;
 
-    //if ( !static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerNotPresent" ) ) ||
-    //                             static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerEnabled" ) ) )
-    //{
-    //    //this would be checked in the driver loader
-    //    return STATUS_ABANDONED;
-    //}
+    if ( !static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerNotPresent" ) ) ||
+                                 static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerEnabled" ) ) )
+    {
+        //this would be checked in the driver loader
+        return STATUS_ABANDONED;
+    }
 
     driver_object->DriverUnload = DriverUnload;
     driver_object->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = IoctlHandler;
