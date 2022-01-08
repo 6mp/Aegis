@@ -3,6 +3,15 @@
 #include "../../Shared/Hash.hpp"
 
 
+
+#define GET_SYM( x ) Utils::GetExportByHash( Utils::GetBase(), COMPILE_HASH( x ) )
+
+#define GET_FN( x ) static_cast<decltype( &x )>( Utils::GetExportByHash( Utils::GetBase(), COMPILE_HASH( #x ) ) )
+
+#define DBG_LOG( fmt, ... )                                                                                            \
+    GET_FN( DbgPrintEx )                                                                                               \
+    ( DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[oxygen][" __FUNCTION__ "] " fmt "\n", ##__VA_ARGS__ );
+
 namespace Utils
 {
     typedef struct _IMAGE_DOS_HEADER
@@ -101,7 +110,144 @@ namespace Utils
         ULONG AddressOfNameOrdinals;
     } IMAGE_EXPORT_DIRECTORY,* PIMAGE_EXPORT_DIRECTORY;
 
-    FORCEINLINE PVOID GetKernelBase()
+    typedef struct _SYSTEM_THREAD
+    {
+        LARGE_INTEGER KernelTime;
+        LARGE_INTEGER UserTime;
+        LARGE_INTEGER CreateTime;
+        ULONG WaitTime;
+        PVOID StartAddress;
+        CLIENT_ID ClientId;
+        KPRIORITY Priority;
+        LONG BasePriority;
+        ULONG ContextSwitchCount;
+        ULONG State;
+        KWAIT_REASON WaitReason;
+    } SYSTEM_THREAD, *PSYSTEM_THREAD;
+
+    typedef struct _SYSTEM_PROCESS_INFORMATION
+    {
+        ULONG NextEntryOffset;
+        ULONG NumberOfThreads;
+        LARGE_INTEGER Reserved[ 3 ];
+        LARGE_INTEGER CreateTime;
+        LARGE_INTEGER UserTime;
+        LARGE_INTEGER KernelTime;
+        UNICODE_STRING ImageName;
+        KPRIORITY BasePriority;
+        HANDLE ProcessId;
+        HANDLE InheritedFromProcessId;
+        ULONG HandleCount;
+        ULONG Reserved2[ 2 ];
+        ULONG PrivatePageCount;
+        VM_COUNTERS VirtualMemoryCounters;
+        IO_COUNTERS IoCounters;
+        SYSTEM_THREAD Threads[ 0 ];
+    } SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
+
+    typedef struct _RTL_PROCESS_MODULE_INFORMATION
+    {
+        HANDLE Section;
+        PVOID MappedBase;
+        PVOID ImageBase;
+        ULONG ImageSize;
+        ULONG Flags;
+        USHORT LoadOrderIndex;
+        USHORT InitOrderIndex;
+        USHORT LoadCount;
+        USHORT OffsetToFileName;
+        UCHAR FullPathName[ 256 ];
+    } RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
+
+    typedef struct _RTL_PROCESS_MODULES
+    {
+        ULONG NumberOfModules;
+        RTL_PROCESS_MODULE_INFORMATION Modules[ 1 ];
+    } RTL_PROCESS_MODULES, *PRTL_PROCESS_MODULES;
+
+    typedef enum _SYSTEM_INFORMATION_CLASS
+    {
+        SystemBasicInformation,
+        SystemProcessorInformation,
+        SystemPerformanceInformation,
+        SystemTimeOfDayInformation,
+        SystemPathInformation,
+        SystemProcessInformation,
+        SystemCallCountInformation,
+        SystemDeviceInformation,
+        SystemProcessorPerformanceInformation,
+        SystemFlagsInformation,
+        SystemCallTimeInformation,
+        SystemModuleInformation,
+        SystemLocksInformation,
+        SystemStackTraceInformation,
+        SystemPagedPoolInformation,
+        SystemNonPagedPoolInformation,
+        SystemHandleInformation,
+        SystemObjectInformation,
+        SystemPageFileInformation,
+        SystemVdmInstemulInformation,
+        SystemVdmBopInformation,
+        SystemFileCacheInformation,
+        SystemPoolTagInformation,
+        SystemInterruptInformation,
+        SystemDpcBehaviorInformation,
+        SystemFullMemoryInformation,
+        SystemLoadGdiDriverInformation,
+        SystemUnloadGdiDriverInformation,
+        SystemTimeAdjustmentInformation,
+        SystemSummaryMemoryInformation,
+        SystemNextEventIdInformation,
+        SystemEventIdsInformation,
+        SystemCrashDumpInformation,
+        SystemExceptionInformation,
+        SystemCrashDumpStateInformation,
+        SystemKernelDebuggerInformation,
+        SystemContextSwitchInformation,
+        SystemRegistryQuotaInformation,
+        SystemExtendServiceTableInformation,
+        SystemPrioritySeperation,
+        SystemPlugPlayBusInformation,
+        SystemDockInformation
+    } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
+
+    typedef struct _KLDR_DATA_TABLE_ENTRY
+    {
+        struct _LIST_ENTRY InLoadOrderLinks;             // 0x0
+        VOID* ExceptionTable;                            // 0x10
+        ULONG ExceptionTableSize;                        // 0x18
+        VOID* GpValue;                                   // 0x20
+        struct _NON_PAGED_DEBUG_INFO* NonPagedDebugInfo; // 0x28
+        VOID* DllBase;                                   // 0x30
+        VOID* EntryPoint;                                // 0x38
+        ULONG SizeOfImage;                               // 0x40
+        struct _UNICODE_STRING FullDllName;              // 0x48
+        struct _UNICODE_STRING BaseDllName;              // 0x58
+        ULONG Flags;                                     // 0x68
+        USHORT LoadCount;                                // 0x6c
+        union
+        {
+            USHORT SignatureLevel : 4; // 0x6e
+            USHORT SignatureType : 3;  // 0x6e
+            USHORT Unused : 9;         // 0x6e
+            USHORT EntireField;        // 0x6e
+        } u1;                          // 0x6e
+        VOID* SectionPointer;          // 0x70
+        ULONG CheckSum;                // 0x78
+        ULONG CoverageSectionSize;     // 0x7c
+        VOID* CoverageSection;         // 0x80
+        VOID* LoadedImports;           // 0x88
+        VOID* Spare;                   // 0x90
+        ULONG SizeOfImageNotRounded;   // 0x98
+        ULONG TimeDateStamp;           // 0x9c
+    } KLDR_DATA_TABLE_ENTRY, *PKLDR_DATA_TABLE_ENTRY; 
+
+
+    NTSTATUS ZwQuerySystemInformation( SYSTEM_INFORMATION_CLASS SystemInformationClass,
+                                                  PVOID SystemInformation, ULONG SystemInformationLength,
+                                                  PULONG ReturnLength );
+
+    FORCEINLINE PVOID GetBase()
     {
         static void* base;
         if ( base == nullptr )
@@ -136,42 +282,70 @@ namespace Utils
         return base;
     };
 
-    FORCEINLINE PVOID GetDriverExportByHash( void* driver_base, ULONG64 hash )
+    FORCEINLINE PVOID GetExportByHash( void* driver_base, ULONG64 hash )
     {
-        const auto dos_header = static_cast< PIMAGE_DOS_HEADER >( driver_base );
-        const auto nt_header = reinterpret_cast< PIMAGE_NT_HEADERS64 >( dos_header->e_lfanew + reinterpret_cast<ULONG64>( driver_base ) );
+        const auto dos_header = static_cast<PIMAGE_DOS_HEADER>( driver_base );
+        const auto nt_header =
+            reinterpret_cast<PIMAGE_NT_HEADERS64>( dos_header->e_lfanew + reinterpret_cast<ULONG64>( driver_base ) );
 
-        const auto export_dir =
-            reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>( ( ULONG64 )driver_base +
-                                                       nt_header->OptionalHeader.DataDirectory[ 0 ]
-                                                       .VirtualAddress );
+        const auto export_dir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(
+            reinterpret_cast<ULONG64>( driver_base ) + nt_header->OptionalHeader.DataDirectory[ 0 ].VirtualAddress );
 
-        const auto names = reinterpret_cast<ULONG32*>( export_dir->AddressOfNames + reinterpret_cast<ULONG64>( driver_base ) );
+        const auto names =
+            reinterpret_cast<ULONG32*>( export_dir->AddressOfNames + reinterpret_cast<ULONG64>( driver_base ) );
 
-        const auto functions = reinterpret_cast<ULONG32*>( export_dir->AddressOfFunctions + reinterpret_cast<ULONG64>( driver_base ) );
+        const auto functions =
+            reinterpret_cast<ULONG32*>( export_dir->AddressOfFunctions + reinterpret_cast<ULONG64>( driver_base ) );
 
-        const auto ordinals = reinterpret_cast<USHORT*>( export_dir->AddressOfNameOrdinals + reinterpret_cast<ULONG64>( driver_base ) );
+        const auto ordinals =
+            reinterpret_cast<USHORT*>( export_dir->AddressOfNameOrdinals + reinterpret_cast<ULONG64>( driver_base ) );
 
         for ( auto idx{ 0u }; idx < export_dir->NumberOfFunctions; ++idx )
         {
             if ( !names[ idx ] || !ordinals[ idx ] )
                 continue;
 
-            if ( Hash::hash( reinterpret_cast<PCHAR>( reinterpret_cast<ULONG64>( driver_base ) + names[ idx ] ) ) == hash )
-                return reinterpret_cast<PVOID>( reinterpret_cast<ULONG64>( driver_base ) + functions[ ordinals[ idx ] ] );
+            if ( Hash::hash( reinterpret_cast<PCHAR>( reinterpret_cast<ULONG64>( driver_base ) + names[ idx ] ) ) ==
+                 hash )
+                return reinterpret_cast<PVOID>( reinterpret_cast<ULONG64>( driver_base ) +
+                                                functions[ ordinals[ idx ] ] );
         }
         return nullptr;
     }
+
+    FORCEINLINE HANDLE GetPidByHash( const ULONG64 hash )
+    {
+        ULONG alloc_size{};
+        GET_FN( ZwQuerySystemInformation )
+        ( SystemProcessInformation, nullptr, alloc_size, &alloc_size );
+
+        auto procInfo =
+            static_cast<PSYSTEM_PROCESS_INFORMATION>( GET_FN( ExAllocatePool )( NonPagedPool, alloc_size ) );
+
+        const auto origPtr = procInfo;
+        GET_FN( ZwQuerySystemInformation )
+        ( SystemProcessInformation, procInfo, alloc_size, &alloc_size );
+
+        while ( true )
+        {
+            if ( procInfo->ImageName.Buffer )
+            {
+                if ( Hash::hash( procInfo->ImageName.Buffer ) == hash )
+                {
+                    const auto result = procInfo->ProcessId;
+                    GET_FN( ExFreePool )( origPtr );
+                    return result;
+                }
+            }
+
+            if ( !procInfo->NextEntryOffset )
+                break;
+
+            procInfo = reinterpret_cast<PSYSTEM_PROCESS_INFORMATION>( reinterpret_cast<ULONG64>( procInfo ) +
+                                                                      procInfo->NextEntryOffset );
+        }
+
+        GET_FN( ExFreePool )( origPtr );
+        return nullptr;
+    }
 }
-
-
-
-#define GET_SYM(x)                                   \
-  Utils::GetDriverExportByHash( Utils::GetKernelBase(), COMPILE_HASH( #x ) )
-
-#define GET_FN( x )                                                                                                    \
-    static_cast<decltype( &x )>( Utils::GetDriverExportByHash( Utils::GetKernelBase(), COMPILE_HASH( #x ) ) )
-
-#define DBG_LOG( fmt, ... ) \
-    GET_FN( DbgPrintEx )                                                                                               \
-    ( DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[oxygen][" __FUNCTION__ "] " fmt "\n", ##__VA_ARGS__ );

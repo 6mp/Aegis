@@ -1,20 +1,158 @@
 #include "Utils/Utils.hpp"
+#include "Callbacks/NotifyRoutine.hpp"
+#include "Callbacks/PrePost.hpp"
+#include "../Shared/Communication.hpp"
 
-#include <ntifs.h>
+
+UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\Aegis" );
+UNICODE_STRING DEVICE_SYMBOLIC_NAME = RTL_CONSTANT_STRING( L"\\??\\AegisLink" );
 
 EXTERN_C auto DriverUnload( PDRIVER_OBJECT driver_object ) -> void
 {
     UNREFERENCED_PARAMETER( driver_object );
+    DBG_LOG( "Driver unloaded" )
+    GET_FN( IoDeleteDevice )( driver_object->DeviceObject );
+    GET_FN( IoDeleteSymbolicLink )( &DEVICE_SYMBOLIC_NAME );
+}
 
-    DBG_LOG( "unload" )
+EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
+{
+    UNREFERENCED_PARAMETER( device_object );
+    const auto stack_location = IoGetCurrentIrpStackLocation( irp );
+
+    switch ( stack_location->Parameters.DeviceIoControl.IoControlCode )
+    {
+        case IOCTL_INIT:
+        {
+            LARGE_INTEGER Time{};
+            ULONG kernelmode_time{};
+            GET_FN( KeQuerySystemTimePrecise )( &Time );
+            GET_FN( RtlTimeToSecondsSince1970 )( &Time, &kernelmode_time );
+            shared::encryption_key = kernelmode_time;
+
+            shared::Init init{};
+            RtlCopyMemory( &init, irp->AssociatedIrp.SystemBuffer, sizeof( shared::Init ) );
+            shared::SpinBytes( &init, sizeof( shared::Init ) );
+            const auto requester_name = init.requester_name;
+
+            if ( requester_name != COMPILE_HASH( "SEService.exe" ) )
+            {
+                //*reinterpret_cast< std::nullptr_t* >( 0 ) = nullptr;
+                DBG_LOG( "failed match" )
+                break;
+            }
+
+            GET_FN( PsSetLoadImageNotifyRoutine )( NotifyRoutine::LoadImage );
+
+            shared::Response response{ .success = true };
+            shared::SpinBytes( &response );
+
+            RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
+            irp->IoStatus.Information = 69;
+            irp->IoStatus.Status = STATUS_SUCCESS;
+            break;
+        }
+
+        case IOCTL_START:
+        {
+            shared::SpinBytes( irp->AssociatedIrp.SystemBuffer, sizeof( shared::Startup ) );
+            PrePost::ProcessHash = static_cast<shared::Startup*>( irp->AssociatedIrp.SystemBuffer )->protection_target;
+            shared::SpinBytes( irp->AssociatedIrp.SystemBuffer, sizeof( shared::Startup ) );
+
+            OB_CALLBACK_REGISTRATION obr{};
+            // ReSharper disable once CppInitializedValueIsAlwaysRewritten
+            OB_OPERATION_REGISTRATION ocr{};
+
+            obr.Version = GET_FN( ObGetFilterVersion )();
+            obr.OperationRegistrationCount = 1;
+            GET_FN( RtlInitUnicodeString )( &obr.Altitude, L"300000" );
+            obr.RegistrationContext = nullptr;
+
+            ocr.ObjectType = static_cast<POBJECT_TYPE*>( GET_SYM( "PsProcessType" ) );
+            ocr.Operations = OB_OPERATION_HANDLE_CREATE;
+            ocr.PreOperation = PrePost::PreCallback;
+            ocr.PostOperation = PrePost::PostCallback;
+
+            obr.OperationRegistration = &ocr;
+
+            const auto callback_reg_status = GET_FN( ObRegisterCallbacks )( &obr, &PrePost::Registration );
+
+            shared::Response response{ .success = callback_reg_status == 0 };
+            shared::SpinBytes( &response );
+
+            RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
+            irp->IoStatus.Information = 420;
+            irp->IoStatus.Status = STATUS_SUCCESS;
+            break;
+        }
+
+        case IOCTL_STOP:
+        {
+            shared::SpinBytes( irp->AssociatedIrp.SystemBuffer, sizeof( shared::Stop ) );
+
+            shared::SpinBytes( irp->AssociatedIrp.SystemBuffer, sizeof( shared::Stop ) );
+
+            auto pid = Utils::GetPidByHash( COMPILE_HASH( "notepad.exe" ) );
+            HANDLE process_handle;
+            CLIENT_ID client_id{ .UniqueProcess = pid, .UniqueThread = nullptr };
+            OBJECT_ATTRIBUTES obj_attr{};
+
+            auto status = GET_FN( ZwOpenProcess )( &process_handle, PROCESS_ALL_ACCESS, &obj_attr, &client_id );
+            status = GET_FN( ZwTerminateProcess )( process_handle, 0 );
+            status = GET_FN( PsRemoveLoadImageNotifyRoutine )( NotifyRoutine::LoadImage );
+            GET_FN( ObUnRegisterCallbacks )( PrePost::Registration );
+
+            shared::Response response{ .success = status == 0 };
+            shared::SpinBytes( &response );
+
+            RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
+            irp->IoStatus.Information = 420;
+            irp->IoStatus.Status = STATUS_SUCCESS;
+            break;
+        }
+            DEFAULT_UNREACHABLE;
+    }
+
+    GET_FN( IofCompleteRequest )( irp, IO_NO_INCREMENT );
+
+    return STATUS_SUCCESS;
+}
+
+EXTERN_C auto CreateClose( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
+{
+    UNREFERENCED_PARAMETER( device_object );
+
+    auto stack_location = IoGetCurrentIrpStackLocation( irp );
+
+    irp->IoStatus.Information = 0;
+    irp->IoStatus.Status = STATUS_SUCCESS;
+    GET_FN( IofCompleteRequest )( irp, IO_NO_INCREMENT );
+
+    return STATUS_SUCCESS;
 }
 
 EXTERN_C auto DriverEntry( PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path ) -> NTSTATUS
 {
     UNREFERENCED_PARAMETER( registry_path );
 
-    DBG_LOG( "in here" )
+    // Needed to register callbacks, this is about some signature checking
+    static_cast<Utils::PKLDR_DATA_TABLE_ENTRY>( driver_object->DriverSection )->Flags |= 32;
+
+    // if ( !static_cast< PBOOLEAN >( KUtils::Driver::GetDriverExportByHash( KUtils::Driver::GetKernelBase(),
+    //                                                                       HSTRING( "KdDebuggerNotPresent" ) ) ) ||
+    //     static_cast< PBOOLEAN >( KUtils::Driver::GetDriverExportByHash( KUtils::Driver::GetKernelBase(),
+    //                                                                       HSTRING( "KdDebuggerEnabled" ) ) ) )
+    //    *reinterpret_cast< std::nullptr_t* >( 0 ) = nullptr;
 
     driver_object->DriverUnload = DriverUnload;
-    return STATUS_SUCCESS;
+    driver_object->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = IoctlHandler;
+    driver_object->MajorFunction[ IRP_MJ_CREATE ] = CreateClose;
+    driver_object->MajorFunction[ IRP_MJ_CLOSE ] = CreateClose;
+
+    DBG_LOG( "Driver loaded" )
+
+    GET_FN( IoCreateDevice )
+    ( driver_object, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &driver_object->DeviceObject );
+
+    return GET_FN( IoCreateSymbolicLink )( &DEVICE_SYMBOLIC_NAME, &DEVICE_NAME );
 }
