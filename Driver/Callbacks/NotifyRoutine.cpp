@@ -8,4 +8,6 @@ auto NotifyRoutine::LoadImage( PUNICODE_STRING FullImageName, HANDLE ProcessId, 
 
     DBG_LOG( "pid %u is loading %ws with ImageSignatureLevel %u and ImageSignatureType %u", ProcessId,
              FullImageName->Buffer, signature_level, signature_type )
+
+    //TODO: Terminate process if unsigned or blacklisted module is loaded
 }

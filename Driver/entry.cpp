@@ -140,13 +140,13 @@ EXTERN_C auto DriverEntry( PDRIVER_OBJECT driver_object, PUNICODE_STRING registr
 {
     UNREFERENCED_PARAMETER( registry_path );
 
-    // Needed to register callbacks
+    //Needed to register callbacks
     static_cast<Utils::PKLDR_DATA_TABLE_ENTRY>( driver_object->DriverSection )->Flags |= 32;
 
     if ( !static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerNotPresent" ) ) ||
                                  static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerEnabled" ) ) )
     {
-        //this would be checked in the driver loader
+        //This would be checked in the driver loader
         return STATUS_ABANDONED;
     }
 
