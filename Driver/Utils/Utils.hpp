@@ -8,9 +8,15 @@
 
 #define GET_FN( x ) static_cast<decltype( &x )>( Utils::GetExportByHash( Utils::GetBase(), COMPILE_HASH( #x ) ) )
 
+#ifdef _DEBUG
 #define DBG_LOG( fmt, ... )                                                                                            \
     GET_FN( DbgPrintEx )                                                                                               \
     ( DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[6mp][" __FUNCTION__ "] " fmt "\n", ##__VA_ARGS__ );
+#endif
+
+#ifndef _DEBUG
+#define DBG_LOG( fmt, ... )                                                                                            
+#endif
 
 namespace Utils
 {

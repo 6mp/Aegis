@@ -24,10 +24,10 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
     {
         case IOCTL_INIT:
         {
-            LARGE_INTEGER Time{};
+            LARGE_INTEGER time{};
             ULONG kernelmode_time{};
-            GET_FN( KeQuerySystemTimePrecise )( &Time );
-            GET_FN( RtlTimeToSecondsSince1970 )( &Time, &kernelmode_time );
+            GET_FN( KeQuerySystemTimePrecise )( &time );
+            GET_FN( RtlTimeToSecondsSince1970 )( &time, &kernelmode_time );
             shared::encryption_key = kernelmode_time;
 
             shared::Init init{};
