@@ -34,11 +34,16 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
             RtlCopyMemory( &init, irp->AssociatedIrp.SystemBuffer, sizeof( shared::Init ) );
             shared::SpinBytes( &init, sizeof( shared::Init ) );
             const auto requester_name = init.requester_name;
+            DBG_LOG( "requester_name, %llu", requester_name );
 
-            if ( requester_name != COMPILE_HASH( "SEService.exe" ) )
+            if ( requester_name != COMPILE_HASH( "Client.exe" ) )
             {
-                //*reinterpret_cast< std::nullptr_t* >( 0 ) = nullptr;
-                DBG_LOG( "failed match" )
+                shared::Response response{ .success = false };
+                shared::SpinBytes( &response );
+
+                RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
+                irp->IoStatus.Information = sizeof( shared::Response );
+                irp->IoStatus.Status = STATUS_DUPLICATE_NAME;
                 break;
             }
 
@@ -48,7 +53,7 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
             shared::SpinBytes( &response );
 
             RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
-            irp->IoStatus.Information = 69;
+            irp->IoStatus.Information = sizeof( shared::Response );
             irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         }
@@ -77,11 +82,11 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
 
             const auto callback_reg_status = GET_FN( ObRegisterCallbacks )( &obr, &PrePost::Registration );
 
-            shared::Response response{ .success = callback_reg_status == 0 };
+            shared::Response response{ .success = callback_reg_status == STATUS_SUCCESS };
             shared::SpinBytes( &response );
 
             RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
-            irp->IoStatus.Information = 420;
+            irp->IoStatus.Information = sizeof( shared::Response );
             irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         }
@@ -92,7 +97,7 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
 
             shared::SpinBytes( irp->AssociatedIrp.SystemBuffer, sizeof( shared::Stop ) );
 
-            auto pid = Utils::GetPidByHash( COMPILE_HASH( "notepad.exe" ) );
+            auto pid = Utils::GetPidByHash( PrePost::ProcessHash );
             HANDLE process_handle;
             CLIENT_ID client_id{ .UniqueProcess = pid, .UniqueThread = nullptr };
             OBJECT_ATTRIBUTES obj_attr{};
@@ -106,7 +111,7 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
             shared::SpinBytes( &response );
 
             RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
-            irp->IoStatus.Information = 420;
+            irp->IoStatus.Information = sizeof( shared::Response );
             irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         }
@@ -135,14 +140,15 @@ EXTERN_C auto DriverEntry( PDRIVER_OBJECT driver_object, PUNICODE_STRING registr
 {
     UNREFERENCED_PARAMETER( registry_path );
 
-    // Needed to register callbacks, this is about some signature checking
+    // Needed to register callbacks
     static_cast<Utils::PKLDR_DATA_TABLE_ENTRY>( driver_object->DriverSection )->Flags |= 32;
 
-    // if ( !static_cast< PBOOLEAN >( KUtils::Driver::GetDriverExportByHash( KUtils::Driver::GetKernelBase(),
-    //                                                                       HSTRING( "KdDebuggerNotPresent" ) ) ) ||
-    //     static_cast< PBOOLEAN >( KUtils::Driver::GetDriverExportByHash( KUtils::Driver::GetKernelBase(),
-    //                                                                       HSTRING( "KdDebuggerEnabled" ) ) ) )
-    //    *reinterpret_cast< std::nullptr_t* >( 0 ) = nullptr;
+    //if ( !static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerNotPresent" ) ) ||
+    //                             static_cast<PBOOLEAN>( GET_SYM( "KdDebuggerEnabled" ) ) )
+    //{
+    //    //this would be checked in the driver loader
+    //    return STATUS_ABANDONED;
+    //}
 
     driver_object->DriverUnload = DriverUnload;
     driver_object->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = IoctlHandler;
