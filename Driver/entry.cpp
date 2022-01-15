@@ -24,18 +24,21 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
     {
         case IOCTL_INIT:
         {
+            //seconds for epoch, used for encryption key
             LARGE_INTEGER time{};
             ULONG kernelmode_time{};
             GET_FN( KeQuerySystemTimePrecise )( &time );
             GET_FN( RtlTimeToSecondsSince1970 )( &time, &kernelmode_time );
             shared::encryption_key = kernelmode_time;
 
+            //decrypt ioctl buffer
             shared::Init init{};
             RtlCopyMemory( &init, irp->AssociatedIrp.SystemBuffer, sizeof( shared::Init ) );
             shared::SpinBytes( &init, sizeof( shared::Init ) );
             const auto requester_name = init.requester_name;
             DBG_LOG( "requester_name, %llu", requester_name );
 
+            //make sure request is coming from one of our procees, TODO: improve
             if ( requester_name != COMPILE_HASH( "Client.exe" ) )
             {
                 shared::Response response{ .success = false };
@@ -46,9 +49,9 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
                 irp->IoStatus.Status = STATUS_DUPLICATE_NAME;
                 break;
             }
+    
 
-            GET_FN( PsSetLoadImageNotifyRoutine )( NotifyRoutine::LoadImage );
-
+            //prepare response and encrypt
             shared::Response response{ .success = true };
             shared::SpinBytes( &response );
 
@@ -80,9 +83,12 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
 
             obr.OperationRegistration = &ocr;
 
+            //register callbacks
             const auto callback_reg_status = GET_FN( ObRegisterCallbacks )( &obr, &PrePost::Registration );
+            const auto load_image_status = GET_FN( PsSetLoadImageNotifyRoutine )( NotifyRoutine::LoadImage );
 
-            shared::Response response{ .success = callback_reg_status == STATUS_SUCCESS };
+
+            shared::Response response{ .success = callback_reg_status == STATUS_SUCCESS && load_image_status == STATUS_SUCCESS };
             shared::SpinBytes( &response );
 
             RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
@@ -102,12 +108,13 @@ EXTERN_C auto IoctlHandler( PDEVICE_OBJECT device_object, PIRP irp ) -> NTSTATUS
             CLIENT_ID client_id{ .UniqueProcess = pid, .UniqueThread = nullptr };
             OBJECT_ATTRIBUTES obj_attr{};
 
+            //terminate the process for cleanup
             auto status = GET_FN( ZwOpenProcess )( &process_handle, PROCESS_ALL_ACCESS, &obj_attr, &client_id );
             status = GET_FN( ZwTerminateProcess )( process_handle, 0 );
             status = GET_FN( PsRemoveLoadImageNotifyRoutine )( NotifyRoutine::LoadImage );
             GET_FN( ObUnRegisterCallbacks )( PrePost::Registration );
 
-            shared::Response response{ .success = status == 0 };
+            shared::Response response{ .success = status == STATUS_SUCCESS };
             shared::SpinBytes( &response );
 
             RtlCopyMemory( irp->AssociatedIrp.SystemBuffer, &response, sizeof( shared::Response ) );
