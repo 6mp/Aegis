@@ -9,7 +9,6 @@ UNICODE_STRING DEVICE_SYMBOLIC_NAME = RTL_CONSTANT_STRING( L"\\??\\AegisLink" );
 
 EXTERN_C auto DriverUnload( PDRIVER_OBJECT driver_object ) -> void
 {
-    UNREFERENCED_PARAMETER( driver_object );
     DBG_LOG( "Driver unloaded" )
     GET_FN( IoDeleteDevice )( driver_object->DeviceObject );
     GET_FN( IoDeleteSymbolicLink )( &DEVICE_SYMBOLIC_NAME );
