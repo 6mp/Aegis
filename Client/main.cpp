@@ -35,7 +35,7 @@ int main( char argc, char** argv )
         std::printf( "current name %s\n", current_filename );
 
         shared::encryption_key =
-            duration_cast<std::chrono::seconds>( std::chrono::system_clock::now().time_since_epoch() ).count();
+            duration_cast<std::chrono::seconds>( std::chrono::system_clock::now().time_since_epoch() ).count() % 255;
 
         shared::Init init{ .requester_name = Hash::hash( current_filename ) };
         fill_array( init.__pad_1 );
